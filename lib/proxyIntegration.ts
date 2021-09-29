@@ -23,6 +23,7 @@ export interface ProxyIntegrationRoute {
     request: ProxyIntegrationEvent<unknown>,
     context: APIGatewayEventRequestContext
   ) => ProxyIntegrationResult | Promise<ProxyIntegrationResult> | string | Promise<string>
+  binaryMedia?: boolean
 }
 
 export type ProxyIntegrationErrorMapping = {
@@ -128,7 +129,8 @@ export const process: ProcessMethod<ProxyIntegrationConfig, APIGatewayProxyEvent
       const actionConfig = findMatchingActionConfig(httpMethod, event.path, proxyIntegrationConfig) || {
         action: NO_MATCHING_ACTION,
         routePath: undefined,
-        paths: undefined
+        paths: undefined,
+        binaryMedia: undefined
       }
 
       const proxyEvent: ProxyIntegrationEvent = event
@@ -136,14 +138,20 @@ export const process: ProcessMethod<ProxyIntegrationConfig, APIGatewayProxyEvent
       proxyEvent.paths = actionConfig.paths
       proxyEvent.routePath = actionConfig.routePath
       if (event.body) {
-        try {
-          proxyEvent.body = JSON.parse(event.body)
-        } catch (parseError) {
-          console.log(`Could not parse body as json: ${event.body}`, parseError)
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ message: 'body is not a valid JSON', error: 'ParseError' })
+        if (actionConfig.binaryMedia) {
+          proxyEvent.body = event.isBase64Encoded
+            ? Buffer.from(event.body, 'base64')
+            : event.body
+        } else {
+          try {
+            proxyEvent.body = JSON.parse(event.body)
+          } catch (parseError) {
+            console.log(`Could not parse body as json: ${event.body}`, parseError)
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ message: 'body is not a valid JSON', error: 'ParseError' })
+            }
           }
         }
       }
