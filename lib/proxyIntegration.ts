@@ -139,7 +139,7 @@ export const process: ProcessMethod<ProxyIntegrationConfig, APIGatewayProxyEvent
       proxyEvent.routePath = actionConfig.routePath
       if (event.body) {
         const [, contentType] = Object.entries(headers || {}).find(([k]) => k.toLowerCase() === 'content-type') || []
-        if ((contentType || '').toString().toLowerCase() === 'application/x-www-urlformencoded') {
+        if ((contentType || '').toString().toLowerCase() === 'application/x-www-form-urlencoded') {
           try {
             proxyEvent.body = querystring.parse(event.body)
           } catch (parseError) {
