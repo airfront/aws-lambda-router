@@ -1,3 +1,5 @@
+import * as querystring from 'querystring'
+
 import { APIGatewayEventRequestContext, APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 
 import { HttpMethod, ProcessMethod } from './EventProcessor'
@@ -136,14 +138,28 @@ export const process: ProcessMethod<ProxyIntegrationConfig, APIGatewayProxyEvent
       proxyEvent.paths = actionConfig.paths
       proxyEvent.routePath = actionConfig.routePath
       if (event.body) {
-        try {
-          proxyEvent.body = JSON.parse(event.body)
-        } catch (parseError) {
-          console.log(`Could not parse body as json: ${event.body}`, parseError)
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ message: 'body is not a valid JSON', error: 'ParseError' })
+        const [, contentType] = Object.entries(headers || {}).find(([k]) => k.toLowerCase() === 'content-type') || []
+        if ((contentType || '').toString().toLowerCase() === 'application/x-www-urlformencoded') {
+          try {
+            proxyEvent.body = querystring.parse(event.body)
+          } catch (parseError) {
+            console.log(`Could not parse body as form: ${event.body}`, parseError)
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ message: 'body is not a valid form', error: 'ParseError' })
+            }
+          }
+        } else {
+          try {
+            proxyEvent.body = JSON.parse(event.body)
+          } catch (parseError) {
+            console.log(`Could not parse body as json: ${event.body}`, parseError)
+            return {
+              statusCode: 400,
+              headers,
+              body: JSON.stringify({ message: 'body is not a valid JSON', error: 'ParseError' })
+            }
           }
         }
       }
