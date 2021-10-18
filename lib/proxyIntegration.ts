@@ -55,6 +55,13 @@ const NO_MATCHING_ACTION = (request: ProxyIntegrationEvent) => {
   }
 }
 
+const METHOD_NOT_ALLOWED = (request: ProxyIntegrationEvent) => {
+  throw {
+    reason: 'METHOD_NOT_ALLOWED',
+    message: `Could not find matching action for ${request.path} and method ${request.httpMethod}`
+  }
+}
+
 const processActionAndReturn = async (actionConfig: Pick<ProxyIntegrationRoute, 'action'>, event: ProxyIntegrationEvent,
   context: APIGatewayEventRequestContext, headers: APIGatewayProxyResult['headers']) => {
 
@@ -112,6 +119,7 @@ export const process: ProcessMethod<ProxyIntegrationConfig, APIGatewayProxyEvent
     // assure necessary values have sane defaults:
     const errorMapping = proxyIntegrationConfig.errorMapping || {}
     errorMapping['NO_MATCHING_ACTION'] = 404
+    errorMapping['METHOD_NOT_ALLOWED'] = 405
 
     if (proxyIntegrationConfig.proxyPath) {
       event.path = (event.pathParameters || {})[proxyIntegrationConfig.proxyPath]
@@ -125,8 +133,11 @@ export const process: ProcessMethod<ProxyIntegrationConfig, APIGatewayProxyEvent
 
     try {
       const httpMethod = event.httpMethod as HttpMethod;
-      const actionConfig = findMatchingActionConfig(httpMethod, event.path, proxyIntegrationConfig) || {
-        action: NO_MATCHING_ACTION,
+      const scanResult: RouteConfigScanResult = {
+        matchedPathFound: false
+      }
+      const actionConfig = findMatchingActionConfig(httpMethod, event.path, proxyIntegrationConfig, scanResult) || {
+        action: scanResult.matchedPathFound ? METHOD_NOT_ALLOWED : NO_MATCHING_ACTION,
         routePath: undefined,
         paths: undefined
       }
@@ -224,16 +235,16 @@ const convertError = (error: ProxyIntegrationError | Error, errorMapping?: Proxy
   }
 }
 
-const findMatchingActionConfig = (httpMethod: HttpMethod, httpPath: string, routeConfig: ProxyIntegrationConfig):
+interface RouteConfigScanResult {
+  matchedPathFound: boolean
+}
+
+const findMatchingActionConfig = (httpMethod: HttpMethod, httpPath: string,
+  routeConfig: ProxyIntegrationConfig, context: RouteConfigScanResult):
   ProxyIntegrationRoute & ProxyIntegrationParams | null => {
 
   const paths: ProxyIntegrationParams['paths'] = {}
-  const matchingMethodRoutes = routeConfig.routes.filter(route => {
-    return (route.method instanceof RegExp)
-      ? route.method.test(httpMethod)
-      : route.method === httpMethod
-  })
-  for (const route of matchingMethodRoutes) {
+  for (const route of routeConfig.routes) {
     if (routeConfig.debug) {
       console.log(`Examining route ${route.path} to match ${httpPath}`)
     }
@@ -246,11 +257,15 @@ const findMatchingActionConfig = (httpMethod: HttpMethod, httpPath: string, rout
       if (routeConfig.debug) {
         console.log(`Found matching route ${route.path} with paths`, paths)
       }
-      return {
+      const methodMatched = (route.method instanceof RegExp)
+        ? route.method.test(httpMethod)
+        : route.method === httpMethod
+      if (methodMatched) return {
         ...route,
         routePath: route.path,
         paths
       }
+      context.matchedPathFound = context.matchedPathFound || true
     }
   }
   if (routeConfig.debug) {
