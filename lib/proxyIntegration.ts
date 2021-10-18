@@ -18,7 +18,7 @@ export type ProxyIntegrationResult = Omit<APIGatewayProxyResult, 'statusCode'> &
 
 export interface ProxyIntegrationRoute {
   path: string
-  method: HttpMethod | RegExp
+  method: HttpMethod | HttpMethod[] | RegExp
   action: (
     request: ProxyIntegrationEvent<unknown>,
     context: APIGatewayEventRequestContext
@@ -259,7 +259,9 @@ const findMatchingActionConfig = (httpMethod: HttpMethod, httpPath: string,
       }
       const methodMatched = (route.method instanceof RegExp)
         ? route.method.test(httpMethod)
-        : route.method === httpMethod
+        : Array.isArray(route.method)
+          ? route.method.includes(httpMethod)
+          : route.method === httpMethod
       if (methodMatched) return {
         ...route,
         routePath: route.path,
